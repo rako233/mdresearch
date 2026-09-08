@@ -94,6 +94,29 @@ describe("config", function()
   end)
 end)
 
+describe("link options", function()
+  it("defaults to a markdown link labelled by title", function()
+    local cfg = config.normalize({ workspaces = { ws() } })
+    expect(cfg.ui.results.link.format).eq("markdown")
+    expect(cfg.ui.results.link.label).eq("title")
+    expect(cfg.ui.results.link.ext).eq(true)
+  end)
+
+  it("rejects an unknown format at setup time", function()
+    expect(bad({ workspaces = { ws() }, ui = { results = { link = { format = "org" } } } }))
+      .contains("ui.results.link.format")
+  end)
+
+  it("keeps label = false, which means the file stem", function()
+    local cfg = config.normalize({
+      workspaces = { ws() },
+      ui = { results = { link = { label = false, ext = false } } },
+    })
+    expect(cfg.ui.results.link.label).eq(false)
+    expect(cfg.ui.results.link.ext).eq(false)
+  end)
+end)
+
 describe("config option keys", function()
   it("accepts every key whose default is nil", function()
     local cfg = config.normalize({

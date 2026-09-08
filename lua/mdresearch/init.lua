@@ -255,6 +255,23 @@ function M.results.preview(opts)
   return report(require("mdresearch.ui.results").preview_row(opts))
 end
 
+---Copy a row's link into a register. The target is the path relative to the
+---workspace root, so the link resolves from any note in the same vault.
+---`format` is "markdown", "wiki" or "path"; without one, `ui.results.link`
+---decides.
+---@param opts { buf?: integer, index?: integer, format?: string, label?: string|false, ext?: boolean, register?: string }|nil
+---@return boolean ok
+function M.results.yank_link(opts)
+  return report(require("mdresearch.ui.results").yank_link_row(opts))
+end
+
+---The link text for a row, without touching a register.
+---@param opts { buf?: integer, index?: integer, format?: string, label?: string|false, ext?: boolean }|nil
+---@return string|nil text, string|nil err
+function M.results.link(opts)
+  return require("mdresearch.ui.results").link_of(opts)
+end
+
 ---Reopen the mask with the query this table came from.
 ---@param opts { buf?: integer }|nil
 ---@return boolean ok

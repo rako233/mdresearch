@@ -9,6 +9,7 @@ CONTENTS                                                *mdresearch-contents*
   4. The search mask .......................... |mdresearch-mask|
   5. Query syntax ............................. |mdresearch-syntax|
   6. The result table ......................... |mdresearch-results|
+     Links .................................... |mdresearch-links|
   7. Commands ................................. |mdresearch-commands|
   8. Lua API .................................. |mdresearch-api|
   9. Actions .................................. |mdresearch-actions|
@@ -168,9 +169,43 @@ The line-to-file mapping is kept out of band, so truncating a long path can
 never send |:MdResearchOpen| to the wrong file.
 
 Load a row with |:MdResearchOpen|, peek at one with |:MdResearchPreview|,
-narrow the search with |:MdResearchRefine|. Both take a {count} that names a
-row outright — `:3MdResearchOpen vsplit` — so they work without the cursor
-being in the table.
+copy a link to one with |:MdResearchYankLink|, narrow the search with
+|:MdResearchRefine|. The first three take a {count} that names a row outright
+— `:3MdResearchOpen vsplit` — so they work without the cursor being in the
+table.
+
+Links                                                     *mdresearch-links*
+
+|:MdResearchYankLink| puts a link to the row's file in a register. The target
+is always the path relative to the workspace root, so the link resolves from
+any note in the same vault. `ui.results.link` sets the default shape: >lua
+    ui = {
+      results = {
+        link = {
+          format   = "markdown",  -- "markdown" | "wiki" | "path"
+          label    = "title",     -- field for the link text, false = file stem
+          ext      = true,        -- keep the extension in the target
+          register = nil,         -- default register; nil = the unnamed one
+        },
+      },
+    }
+<
+The three formats, for `projects/rust-cli.md` titled "Rust CLI patterns": >
+    markdown    [Rust CLI patterns](projects/rust-cli.md)
+    wiki        [[projects/rust-cli.md]]
+    path        projects/rust-cli.md
+<
+A `markdown` target that contains a space or a paren is wrapped in angle
+brackets, and `[` and `]` in the label are backslash-escaped, so the link
+survives a renderer. `label` naming a list-valued field uses its first item;
+a missing or empty label falls back to the file name without its extension.
+
+With `ext = false` the target loses its extension, which is what a wiki link
+usually wants: `[[projects/rust-cli]]`.
+
+The yank goes to the unnamed register by default, and to `+` or `*` as well
+when 'clipboard' contains `unnamedplus` or `unnamed`, so a bare yank reaches
+the system clipboard for the usual setup. Name a register to bypass that.
 
 ==============================================================================
 7. COMMANDS                                             *mdresearch-commands*
@@ -252,6 +287,21 @@ In the result table ~
                         Show the head of a row's file in a float that closes
                         on the next cursor move.
 
+                                                       *:MdResearchYankLink*
+:[count]MdResearchYankLink [register] [format={name}]
+                        Copy a link to a row's file into a register
+                        (|mdresearch-links|). The target is the path relative
+                        to the workspace root. {register} is a single
+                        register name, or `register=`{r}; {format} is
+                        `markdown`, `wiki` or `path`. Both are optional, in
+                        either order, and override `ui.results.link` for this
+                        one call. With a {count}, link row {count} instead of
+                        the row under the cursor. >
+                          :MdResearchYankLink
+                          :MdResearchYankLink +
+                          :MdResearchYankLink format=wiki
+                          :3MdResearchYankLink + format=path
+<
                                                           *:MdResearchRefine*
 :MdResearchRefine       Reopen the mask with the query the table came from.
 
@@ -323,6 +373,9 @@ cursor.
 >lua
     md.results.open("vsplit", { index = 3 })  -- edit|split|vsplit|tabedit
     md.results.preview({ index = 3 })
+    md.results.yank_link()          -- copy a link to a register
+    md.results.yank_link({ index = 3, format = "path", register = "+" })
+    md.results.link({ index = 3 })  -- -> the link text, without yanking
     md.results.refine()             -- the mask, with this table's query
     md.results.close()
     md.results.rows()               -- Row[] behind the table
@@ -331,6 +384,13 @@ cursor.
 <
 A Row is `{ path = string, rel = string, fields = table }` — `fields` holds
 the parsed frontmatter values, keyed by field.
+
+`md.results.yank_link` and `md.results.link` take
+`{ buf, index, format, label, ext, register }`; anything omitted comes from
+`ui.results.link` (|mdresearch-links|). `link` returns the text and an error
+string, `yank_link` returns a boolean and reports its own failure.
+`require("mdresearch.link").render(row, opts)` is the same formatting as a
+pure function, if you want a link for a row you got some other way.
 
 Housekeeping ~
 >lua
@@ -381,6 +441,7 @@ Scope `results` — buffer-local to the result table: >
     results.vsplit    load it in a vertical split
     results.tab       load it in a new tab
     results.preview   preview the file on this line
+    results.yank_link copy a link to this file, relative to the workspace
     results.refine    reopen the mask with this query
     results.close     close the result table
 <
@@ -419,6 +480,7 @@ The plugin maps no key. Declare your own in `setup()`, per scope, as
           ["<C-v>"] = "results.vsplit",
           ["<C-t>"] = "results.tab",
           ["p"]     = "results.preview",
+          ["y"]     = "results.yank_link",
           ["r"]     = "results.refine",
           ["q"]     = "results.close",
         },

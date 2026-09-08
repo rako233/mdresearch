@@ -156,6 +156,12 @@ require("mdresearch").setup({
       size        = 0.45,
       show_header = true,
       show_count  = true,
+      link = {                 -- what MdResearchYankLink copies
+        format   = "markdown", -- "markdown" | "wiki" | "path"
+        label    = "title",    -- field for the link text, false = file stem
+        ext      = true,       -- keep the extension in the target
+        register = nil,        -- default register; nil = the unnamed one
+      },
     },
     icons = { any = "any", all = "all" },
   },
@@ -331,9 +337,55 @@ buffer text, so truncating a long path can never send `:MdResearchOpen` to
 the wrong file.
 
 Load a row with `:MdResearchOpen`, peek at one with `:MdResearchPreview`,
-reopen the mask on the same query with `:MdResearchRefine`. Both of the first
-two take a `{count}` naming a row outright, as in `:3MdResearchOpen vsplit`,
-so they work with the cursor elsewhere.
+copy a link to one with `:MdResearchYankLink`, reopen the mask on the same
+query with `:MdResearchRefine`. The first three take a `{count}` naming a row
+outright, as in `:3MdResearchOpen vsplit`, so they work with the cursor
+elsewhere.
+
+### Copying a link to a row
+
+Put the cursor on a row and `:MdResearchYankLink` copies a link to that file
+into a register. The target is always the path relative to the workspace
+root, so the link resolves from any note in the same vault.
+
+```vim
+:MdResearchYankLink                    " the configured format, unnamed register
+:MdResearchYankLink +                  " into the system clipboard
+:MdResearchYankLink format=wiki        " override the format for this call
+:3MdResearchYankLink + format=path     " row 3, no cursor needed
+```
+
+Three formats, shown for `projects/rust-cli.md` titled "Rust CLI patterns":
+
+| `format` | result |
+|---|---|
+| `markdown` | `[Rust CLI patterns](projects/rust-cli.md)` |
+| `wiki` | `[[projects/rust-cli.md]]` |
+| `path` | `projects/rust-cli.md` |
+
+`ui.results.link` sets the default, and the command and the API override it
+per call. `label` names the field the link text comes from and defaults to
+`title`; set `label = false` for the file name instead. `ext = false` drops
+the extension from the target, which is what a wiki link usually wants:
+`[[projects/rust-cli]]`.
+
+The escaping is handled. A markdown target containing a space or a paren is
+wrapped in angle brackets, and `[` or `]` in the label is backslash-escaped,
+so the link survives a renderer.
+
+The yank lands in the unnamed register, and in `+` or `*` as well when your
+`clipboard` option contains `unnamedplus` or `unnamed`. So if you already run
+`clipboard=unnamedplus`, a bare yank reaches the system clipboard with no
+extra configuration. Name a register to bypass that.
+
+Bind it like anything else, and bind a second format with a Lua function:
+
+```lua
+results = {
+  ["y"]  = "results.yank_link",
+  ["gy"] = function() require("mdresearch").results.yank_link({ format = "path" }) end,
+},
+```
 
 ## Commands
 
@@ -357,6 +409,7 @@ nothing.
 | `:MdResearchField {next\|prev\|first\|last\|<field>\|<n>}` | move the cursor to a field |
 | `:[count]MdResearchOpen [edit\|split\|vsplit\|tabedit]` | load a row's file |
 | `:[count]MdResearchPreview` | show the head of a row's file in a float |
+| `:[count]MdResearchYankLink [register] [format=…]` | copy a link to a row's file, relative to the workspace |
 | `:MdResearchRefine` | reopen the mask with the query the table came from |
 | `:MdResearchReload` | drop the frontmatter cache, re-detect the backend |
 | `:MdResearchHealth` | the `:checkhealth mdresearch` report |
@@ -392,6 +445,7 @@ keymaps = {
     ["<C-v>"] = "results.vsplit",
     ["<C-t>"] = "results.tab",
     ["p"]     = "results.preview",
+    ["y"]     = "results.yank_link",
     ["r"]     = "results.refine",
     ["q"]     = "results.close",
   },
@@ -419,7 +473,7 @@ Add maps after `setup()` with
 |---|---|
 | `global` | `open` `resume` `last` `close` `workspace` `workspace.next` `workspace.prev` `reload` `health` |
 | `mask` | `mask.submit` `mask.cancel` `mask.toggle_mode` `mask.clear_field` `mask.clear_all` `mask.next_field` `mask.prev_field` |
-| `results` | `results.open` `results.split` `results.vsplit` `results.tab` `results.preview` `results.refine` `results.close` |
+| `results` | `results.open` `results.split` `results.vsplit` `results.tab` `results.preview` `results.yank_link` `results.refine` `results.close` |
 
 ## Lua API
 
@@ -452,6 +506,9 @@ md.mask.is_open()
 
 md.results.open("vsplit", { index = 3 })
 md.results.preview({ index = 3 })
+md.results.yank_link()                    -- copy a link to a register
+md.results.yank_link({ index = 3, format = "path", register = "+" })
+md.results.link({ index = 3 })            -- the link text, without yanking
 md.results.refine()
 md.results.rows()              -- the rows behind the table, in display order
 md.results.row(3)
@@ -474,6 +531,12 @@ is `require("mdresearch.ui.mask").FULLTEXT`, and `text=` in
 
 A row is `{ path = string, rel = string, fields = table }`, where `fields`
 holds the parsed frontmatter values keyed by field.
+
+`yank_link` and `link` take `{ buf, index, format, label, ext, register }`,
+and fall back to `ui.results.link` for anything you leave out. `link`
+returns the text plus an error string, `yank_link` returns a boolean and
+reports its own failure. `require("mdresearch.link").render(row, opts)` is
+the same formatting as a pure function, for a row you got some other way.
 
 ## Events
 
@@ -547,7 +610,7 @@ plugin/           the commands        doc/IMPLEMENTATION.md  build order
 ```
 
 ```sh
-make test     # 217 Lua specs and 26 Rust tests
+make test     # 243 Lua specs and 26 Rust tests
 make build    # the optional Rust backend
 make fmt      # cargo fmt, plus stylua when installed
 ```

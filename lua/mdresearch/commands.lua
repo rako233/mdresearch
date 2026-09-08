@@ -112,6 +112,33 @@ local function complete_how(lead)
   return prefixed(lead, { "edit", "split", "vsplit", "tabedit" })
 end
 
+local function complete_link(lead)
+  return prefixed(lead, { "format=markdown", "format=wiki", "format=path", "register=+" })
+end
+
+---Parse `:MdResearchYankLink` arguments: a register name, `format=<name>`,
+---`register=<r>`, or nothing. Order does not matter.
+---@param args string
+---@return table opts, string|nil err
+function M.parse_link_args(args)
+  local opts = {}
+  for word in (args or ""):gmatch("%S+") do
+    local key, value = word:match("^(%a+)=(.+)$")
+    if key == "format" then
+      opts.format = value
+    elseif key == "register" or key == "reg" then
+      opts.register = value
+    elseif key then
+      return opts, string.format("unknown argument %q (format=<name> or a register)", word)
+    elseif #word == 1 then
+      opts.register = word
+    else
+      return opts, string.format("%q is neither a register nor format=<name>", word)
+    end
+  end
+  return opts, nil
+end
+
 ------------------------------------------------------------------- commands --
 
 local function md()
@@ -258,6 +285,20 @@ M.specs = {
     opts = { nargs = 0, count = true },
     run = function(o)
       md().results.preview({ index = count_of(o) })
+    end,
+  },
+  {
+    name = "MdResearchYankLink",
+    desc = "copy a row's link, relative to the workspace: [register] [format=markdown|wiki|path]",
+    opts = { nargs = "*", count = true, complete = complete_link },
+    run = function(o)
+      local opts, err = M.parse_link_args(o.args)
+      if err then
+        require("mdresearch.util").err(err)
+        return
+      end
+      opts.index = count_of(o)
+      md().results.yank_link(opts)
     end,
   },
   {

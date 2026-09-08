@@ -217,6 +217,15 @@ M.list = {
     end,
   },
   {
+    name = "results.yank_link",
+    scope = "results",
+    desc = "copy a link to this file, relative to the workspace",
+    modes = NORMAL,
+    fn = function()
+      md().results.yank_link()
+    end,
+  },
+  {
     name = "results.refine",
     scope = "results",
     desc = "reopen the mask with this query",

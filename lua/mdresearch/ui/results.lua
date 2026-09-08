@@ -8,6 +8,7 @@
 --- commands reach the table from any window and can name a row outright.
 local config = require("mdresearch.config")
 local highlight = require("mdresearch.ui.highlight")
+local link = require("mdresearch.link")
 local query_mod = require("mdresearch.query")
 local state = require("mdresearch.state")
 local tbl = require("mdresearch.ui.table")
@@ -284,6 +285,100 @@ function M.open_row(how, opts)
   end
   vim.cmd(string.format("%s %s", how == "edit" and "edit" or how, vim.fn.fnameescape(row.path)))
   return true
+end
+
+--- Link options: the configured ones, with anything the caller named on top.
+--- Written out rather than folded into `or` chains, because `ext = false`
+--- from a caller has to survive.
+---@param opts table
+---@return table
+local function link_opts(opts)
+  local cfg = config.get().ui.results.link or {}
+  local out = { format = cfg.format, label = cfg.label, ext = cfg.ext }
+  if opts.format ~= nil then
+    out.format = opts.format
+  end
+  if opts.label ~= nil then
+    out.label = opts.label
+  end
+  if opts.ext ~= nil then
+    out.ext = opts.ext
+  end
+  return out
+end
+
+---@param name string
+---@return boolean
+local function clipboard_has(name)
+  for item in vim.o.clipboard:gmatch("[^,]+") do
+    if item == name then
+      return true
+    end
+  end
+  return false
+end
+
+--- Where a yank lands: the register asked for, and the system clipboard too
+--- when 'clipboard' says the unnamed register mirrors into it. That is what
+--- makes a bare yank reach the clipboard for the `unnamedplus` majority
+--- without them configuring a register here.
+---@param reg string|nil
+---@return string[]
+local function registers(reg)
+  reg = (reg == nil or reg == "") and '"' or reg
+  local out = { reg }
+  if reg == '"' then
+    if clipboard_has("unnamedplus") then
+      out[#out + 1] = "+"
+    end
+    if clipboard_has("unnamed") then
+      out[#out + 1] = "*"
+    end
+  end
+  return out
+end
+
+---The link text for a row, without touching a register.
+---@param opts { buf?: integer, index?: integer, format?: string, label?: string|false, ext?: boolean }|nil
+---@return string|nil text, string|nil err
+function M.link_of(opts)
+  opts = opts or {}
+  local buf = (M.find(opts.buf))
+  local row, err = M.row(opts.index, buf)
+  if not row then
+    return nil, err
+  end
+  return link.render(row, link_opts(opts))
+end
+
+---Put a row's link into a register, relative to the workspace root.
+---@param opts { buf?: integer, index?: integer, format?: string, label?: string|false, ext?: boolean, register?: string }|nil
+---@return boolean ok, string|nil err
+function M.yank_link_row(opts)
+  opts = opts or {}
+  local text, err = M.link_of(opts)
+  if not text then
+    return false, err
+  end
+  local cfg = config.get().ui.results.link or {}
+  local regs = registers(opts.register or cfg.register)
+
+  -- The first register is the one asked for; the rest are clipboard mirrors.
+  -- A broken clipboard provider must not turn a successful yank into a
+  -- failure, so only the first one can fail the call.
+  local primary = table.remove(regs, 1)
+  local ok, e = pcall(vim.fn.setreg, primary, text, "v")
+  if not ok then
+    return false, string.format("register %s: %s", primary, tostring(e))
+  end
+  local done = { primary }
+  for _, reg in ipairs(regs) do
+    if pcall(vim.fn.setreg, reg, text, "v") then
+      done[#done + 1] = reg
+    end
+  end
+  util.notify(string.format("copied %s to register %s", text, table.concat(done, " ")))
+  return true, nil
 end
 
 ---Peek at the head of a row's file in a float.

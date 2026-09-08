@@ -27,6 +27,14 @@ M.defaults = {
       size = 0.45,
       show_header = true,
       show_count = true,
+      --- What `results.yank_link` puts in a register. The target is always
+      --- the path relative to the workspace root.
+      link = {
+        format = "markdown", -- "markdown" | "wiki" | "path"
+        label = "title", -- field key for the link text, or false for the file stem
+        ext = true, -- keep the file extension in the target
+        register = nil, -- default register; nil means the unnamed one
+      },
     },
     icons = { any = "any", all = "all" },
   },
@@ -256,6 +264,11 @@ function M.normalize(opts)
   end
 
   cfg.keymaps = normalize_keymaps(cfg.keymaps)
+
+  local link_format = cfg.ui.results.link.format
+  if not require("mdresearch.link").FORMATS[link_format] then
+    fail("ui.results.link.format must be \"markdown\", \"wiki\" or \"path\" (got %q)", tostring(link_format))
+  end
 
   local wss, seen = {}, {}
   for i, w in ipairs(cfg.workspaces) do
