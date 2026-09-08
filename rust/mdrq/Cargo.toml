@@ -1,0 +1,29 @@
+[package]
+name = "mdrq"
+version = "0.1.0"
+edition = "2021"
+description = "Query engine for the mdresearch Neovim plugin: filter Markdown files by typed frontmatter and emit JSON Lines"
+license = "MIT"
+
+[[bin]]
+name = "mdrq"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+globset = "0.4"
+ignore = "0.4"
+rayon = "1.10"
+regex = "1.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+[dev-dependencies]
+tempfile = "3.8"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

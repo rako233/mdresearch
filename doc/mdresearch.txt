@@ -1,0 +1,476 @@
+*mdresearch.txt*  Search Markdown files by frontmatter          *mdresearch*
+
+==============================================================================
+CONTENTS                                                *mdresearch-contents*
+
+  1. Introduction ............................. |mdresearch-intro|
+  2. Setup .................................... |mdresearch-setup|
+  3. Workspaces ............................... |mdresearch-workspaces|
+  4. The search mask .......................... |mdresearch-mask|
+  5. Query syntax ............................. |mdresearch-syntax|
+  6. The result table ......................... |mdresearch-results|
+  7. Commands ................................. |mdresearch-commands|
+  8. Lua API .................................. |mdresearch-api|
+  9. Actions .................................. |mdresearch-actions|
+ 10. Mappings ................................. |mdresearch-mappings|
+ 11. Events ................................... |mdresearch-events|
+ 12. Backends ................................. |mdresearch-backends|
+
+==============================================================================
+1. INTRODUCTION                                            *mdresearch-intro*
+
+mdresearch finds Markdown files by their YAML frontmatter — including
+multi-line tag lists — and by full text, and shows the hits as a table in a
+scratch buffer. Put the cursor on a row, run `:MdResearchOpen`, and the file
+loads.
+
+The plugin maps no key. Everything it does is an Ex command
+(|mdresearch-commands|), a Lua function (|mdresearch-api|), or a named action
+you can map yourself (|mdresearch-actions|, |mdresearch-mappings|).
+
+Requirements: Neovim 0.10+. |ripgrep| is optional but recommended; the Rust
+backend (|mdresearch-backends|) is optional too.
+
+==============================================================================
+2. SETUP                                                   *mdresearch-setup*
+
+>lua
+    require("mdresearch").setup({
+      workspaces = {
+        {
+          name = "notes",
+          root = "~/notes",
+          fields = {
+            { key = "title",   type = "text" },
+            { key = "tags",    type = "text", list = true, mode = "all" },
+            { key = "status",  type = "text" },
+            { key = "prio",    type = "int" },
+            { key = "date",    type = "date" },
+            { key = "updated", type = "datetime" },
+          },
+          columns = { "title", "tags", "date", "path" },
+          sort = { key = "date", desc = true },
+        },
+      },
+    })
+<
+Every option is documented in doc/ARCHITECTURE.md §3. Unknown keys are
+rejected at setup time with a message naming the offending key, so a typo
+never silently disables a feature — that includes an unknown action name in
+`keymaps` (|mdresearch-mappings|).
+
+Field types                                               *mdresearch-types*
+
+    text        substring, exact and regex matching
+    int         equality and ranges
+    date        ISO dates: yyyy, yyyy-mm, yyyy-mm-dd
+    datetime    as date, plus a time part that searching ignores
+
+`list = true` marks a field whose frontmatter value is a sequence — the
+multi-line tags case. A scalar is always treated as a one-element list, so
+the flag only changes how `mode` reads, never whether parsing works.
+
+==============================================================================
+3. WORKSPACES                                         *mdresearch-workspaces*
+
+A workspace is a Markdown directory plus the standard tags its notes use.
+Switch with |:MdResearchWorkspace|, |:MdResearchWorkspaceNext| or
+`require("mdresearch").workspace(name)`; the plugin also switches on its own
+when |DirChanged| lands inside another workspace root. Each workspace has its
+own field set, columns and sort order.
+
+==============================================================================
+4. THE SEARCH MASK                                          *mdresearch-mask*
+
+|:MdResearch| opens one line per standard tag plus a free-text line: >
+
+    Title    [any] │
+    Tags     [all] │ linux server
+    Status   [any] │ published
+    Prio     [any] │ >=3
+    Date     [any] │ 2025-01-01..2025-03-31
+    Updated  [any] │
+    Text     [all] │ docker
+<
+An empty field is not part of the search. `[any]`/`[all]` is the and/or
+condition for that field's values.
+
+Type into the mask as in any buffer, and drive it with
+|:MdResearchToggleMode|, |:MdResearchClearField|, |:MdResearchSetField|,
+|:MdResearchField|, |:MdResearchSubmit| and |:MdResearchClose| — or map those
+actions to keys (|mdresearch-mappings|). The hint line under the mask shows
+your mappings when you have them and the commands when you do not; turn it
+off with `ui.mask.hint = false`.
+
+Every mask command works from any window: they find the open mask themselves,
+and take a field name instead of relying on the cursor line.
+
+==============================================================================
+5. QUERY SYNTAX                                           *mdresearch-syntax*
+
+Values are separated by spaces. A value that contains a space must be
+quoted: >
+
+    linux server "personal notes"
+<
+Matching never cares about capitalisation, on either side.
+
+Text fields ~
+    foo         the value contains "foo"
+    =foo        the value is exactly "foo"
+    /fo.*o/     regular expression (see the note below)
+    !foo        negated — matches when "foo" is absent
+    #foo        same as foo, for pasting tags
+
+Integer fields ~
+    3           equal to 3
+    >=3  >3  <=3  <3
+    1..5        between 1 and 5, both included
+    !3          not 3
+
+Date and datetime fields ~
+    2025-01-15          that day
+    2025-01             any day in January 2025
+    2025                any day in 2025
+    >=2025-01-15        on or after that day        (also: after:2025-01-15)
+    <=2025-01-15        on or before that day       (also: before:2025-01-15)
+    2025-01-01..2025-03-31   between, both days included
+    >2025-01  <2025-02  exclusive of the whole named period
+
+Every bound written with `>=`, `<=`, `after:`, `before:` or `..` includes the
+date named. Datetime fields are compared on their date part only; the four
+accepted stored spellings are `2025-01-15`, `2025-01-15 10:30`,
+`2025-01-15T10:30:00` and `2025-01-15-10:30`.
+
+Overriding the and/or mode inline ~
+    all: linux server       every value must match
+    any: linux macos        one is enough      (aliases: and: / or:)
+
+Full text ~
+Terms are literals matched against the whole file, ANDed by default. `!term`
+excludes, `any:` switches to OR.
+
+                                                          *mdresearch-regex*
+NOTE: `/re/` uses Lua patterns on the Lua backend and RE2 on the mdrq
+backend. They agree on literals, `.`, `*`, `+`, `^`, `$` and `[...]` classes;
+they disagree on everything else (`%d` vs `\d`, alternation). Stick to the
+common subset if you switch backends.
+
+==============================================================================
+6. THE RESULT TABLE                                      *mdresearch-results*
+
+A `nomodifiable` scratch buffer, `filetype=mdresearch-results`: a summary
+line, then the column header, then one line per file. Columns come from the
+workspace `columns` option; they are sized to the data and truncated with an
+ellipsis rather than wrapped.
+
+The line-to-file mapping is kept out of band, so truncating a long path can
+never send |:MdResearchOpen| to the wrong file.
+
+Load a row with |:MdResearchOpen|, peek at one with |:MdResearchPreview|,
+narrow the search with |:MdResearchRefine|. Both take a {count} that names a
+row outright — `:3MdResearchOpen vsplit` — so they work without the cursor
+being in the table.
+
+==============================================================================
+7. COMMANDS                                             *mdresearch-commands*
+
+Every command exists from startup, before `setup()` runs, so <Tab> completes
+them. Ones that need a mask or a table say so instead of doing nothing.
+
+Searching ~
+                                                                *:MdResearch*
+:MdResearch             Open the search mask for the current workspace.
+
+                                                          *:MdResearchSearch*
+:MdResearchSearch {args}
+                        Search without the mask. Arguments are `key=value`,
+                        quoted where they contain spaces: >
+                          :MdResearchSearch tags="linux server" date=>=2025-01
+                          :MdResearchSearch tags="all: linux" text=docker
+<                       `text=` and `fulltext=` address the free-text field.
+                        Completion offers the workspace's field keys.
+
+                                                          *:MdResearchResume*
+:MdResearchResume       Reopen the mask filled with the last query.
+
+                                                         *:MdResearchResults*
+:MdResearchResults      Reopen the last result table.
+
+                                                           *:MdResearchClose*
+:MdResearchClose        Close the mask if one is open, else the result table.
+
+Workspaces ~
+                                                       *:MdResearchWorkspace*
+:MdResearchWorkspace [name]
+                        Switch workspace, or pick one with |vim.ui.select|
+                        when {name} is omitted. Completes workspace names.
+
+                                                   *:MdResearchWorkspaceNext*
+                                                   *:MdResearchWorkspacePrev*
+:MdResearchWorkspaceNext
+:MdResearchWorkspacePrev
+                        Switch to the next / previous configured workspace.
+
+In the mask ~
+                                                          *:MdResearchSubmit*
+:MdResearchSubmit       Run the search the mask describes and close it.
+
+                                                      *:MdResearchToggleMode*
+:MdResearchToggleMode [field]
+                        Flip `[any]`/`[all]` on {field}, or on the field under
+                        the cursor. {field} is a field key, its label, `text`
+                        for the free-text row, or a 1-based row number.
+
+                                                      *:MdResearchClearField*
+:MdResearchClearField[!] [field]
+                        Empty {field}, or the field under the cursor. With !
+                        empty every field.
+
+                                                        *:MdResearchSetField*
+:MdResearchSetField {field}={value}
+                        Write {value} into a mask field: >
+                            :MdResearchSetField tags=linux server
+                            :MdResearchSetField text="docker compose"
+<                       One layer of surrounding quotes is stripped.
+
+                                                           *:MdResearchField*
+:MdResearchField {target}
+                        Put the cursor on a mask field. {target} is `next`,
+                        `prev`, `first`, `last`, a field key or a 1-based row
+                        number. `next`/`prev` wrap around.
+
+In the result table ~
+                                                            *:MdResearchOpen*
+:[count]MdResearchOpen [how]
+                        Load a row's file. {how} is `edit` (the default),
+                        `split`, `vsplit` or `tabedit`. With a {count}, load
+                        row {count} instead of the row under the cursor.
+
+                                                         *:MdResearchPreview*
+:[count]MdResearchPreview
+                        Show the head of a row's file in a float that closes
+                        on the next cursor move.
+
+                                                          *:MdResearchRefine*
+:MdResearchRefine       Reopen the mask with the query the table came from.
+
+Housekeeping ~
+                                                          *:MdResearchReload*
+:MdResearchReload       Drop the frontmatter cache and re-detect the backend.
+
+                                                          *:MdResearchHealth*
+:MdResearchHealth       Run the health check — the same report as
+                        `:checkhealth mdresearch`: the workspaces, the
+                        external tools found, and the chosen backend.
+
+                                                         *:MdResearchActions*
+:MdResearchActions      List the action names you can map, with their scope
+                        and what they do (|mdresearch-actions|).
+
+==============================================================================
+8. LUA API                                                   *mdresearch-api*
+
+`require("mdresearch")` is the public surface. Every function is safe to call
+when nothing is open: it reports the reason and returns `false` rather than
+raising. Anything not listed here is internal and may change.
+
+Setup and searching ~
+>lua
+    local md = require("mdresearch")
+
+    md.setup(opts)                  -- validate config, install commands
+    md.open({                       -- open the search mask
+      prefill   = { tags = "linux server" },  -- by field key
+      modes     = { tags = "all" },           -- "any" | "all"
+      workspace = "notes",                    -- default: the current one
+    })
+    md.resume()                     -- the mask, filled with the last query
+    md.search(raw, modes, opts)     -- search without the mask
+    md.last()                       -- reopen the last result table
+    md.close()                      -- close the mask, else the table
+<
+`md.search` takes the same `raw` and `modes` tables as `md.open`, plus
+`opts = { workspace, backend, prefilter, on_done }`. It is asynchronous;
+`on_done(rows)` runs after the table is filled. The free-text field is the key
+`"__fulltext"` (`require("mdresearch.ui.mask").FULLTEXT`), and `text=` in
+|:MdResearchSearch| is an alias for it.
+
+Workspaces ~
+>lua
+    md.workspace("notes")           -- switch; no name = vim.ui.select
+    md.workspace_next()             -- and md.workspace_prev()
+    md.workspaces()                 -- every configured workspace
+    md.current_workspace()
+<
+The mask ~
+All of these find the open mask themselves, so they work from any window.
+`opts.buf` addresses one explicitly; `field` is a field key, a label, `text`,
+or a 1-based row number.
+>lua
+    md.mask.submit()                -- run the search, close the mask
+    md.mask.cancel()
+    md.mask.toggle_mode({ field = "tags" })   -- no field = under the cursor
+    md.mask.clear_field({ field = "tags" })   -- or { all = true }
+    md.mask.set_field("tags", "linux server")
+    md.mask.focus_field("next")     -- next|prev|first|last|<field>|<n>
+    md.mask.get()                   -- -> raw, modes  (without submitting)
+    md.mask.is_open()
+<
+The result table ~
+`index` is a 1-based row number; without it these use the row under the
+cursor.
+>lua
+    md.results.open("vsplit", { index = 3 })  -- edit|split|vsplit|tabedit
+    md.results.preview({ index = 3 })
+    md.results.refine()             -- the mask, with this table's query
+    md.results.close()
+    md.results.rows()               -- Row[] behind the table
+    md.results.row(3)               -- one Row, or nil
+    md.results.is_open()            -- true while a window shows it
+<
+A Row is `{ path = string, rel = string, fields = table }` — `fields` holds
+the parsed frontmatter values, keyed by field.
+
+Housekeeping ~
+>lua
+    md.reload()                     -- clear caches, re-detect the backend
+    md.health()                     -- :checkhealth entry point
+    md.status()                     -- { workspace, raw, modes, backend,
+                                    --   results = <row count> }
+    md.config()                     -- the normalised configuration
+    md.keymaps({ results = { ["<CR>"] = "results.open" } })  -- add maps later
+    md.VERSION
+<
+Lower layers — `mdresearch.workspace`, `mdresearch.query`,
+`mdresearch.engine`, `mdresearch.engine.frontmatter`, `mdresearch.ui.*` — are
+listed in doc/ARCHITECTURE.md §5. They are stable enough to build on, but
+this module is what the plugin promises.
+
+==============================================================================
+9. ACTIONS                                               *mdresearch-actions*
+
+An action is a named, argument-free thing the plugin can do. It is what you
+put in `keymaps` (|mdresearch-mappings|), and it is the same code the matching
+command runs. `require("mdresearch.actions")` holds the registry;
+|:MdResearchActions| prints it.
+
+Scope `global` — map these anywhere: >
+    open              open the search mask
+    resume            reopen the mask with the last query
+    last              reopen the last result table
+    close             close the mask, or the result table
+    workspace         pick a workspace
+    workspace.next    switch to the next workspace
+    workspace.prev    switch to the previous workspace
+    reload            clear caches and re-detect the backend
+    health            run the health check
+<
+Scope `mask` — buffer-local to the search mask: >
+    mask.submit       run the search
+    mask.cancel       close the mask
+    mask.toggle_mode  flip any/all on this field
+    mask.clear_field  empty this field
+    mask.clear_all    empty every field
+    mask.next_field   cursor to the next field
+    mask.prev_field   cursor to the previous field
+<
+Scope `results` — buffer-local to the result table: >
+    results.open      load the file on this line
+    results.split     load it in a split
+    results.vsplit    load it in a vertical split
+    results.tab       load it in a new tab
+    results.preview   preview the file on this line
+    results.refine    reopen the mask with this query
+    results.close     close the result table
+<
+>lua
+    local actions = require("mdresearch.actions")
+    actions.get("mask.submit")      -- { name, scope, desc, modes, fn }
+    actions.names("results")        -- sorted names in one scope
+    actions.list                    -- every action, in documented order
+<
+==============================================================================
+10. MAPPINGS                                            *mdresearch-mappings*
+
+The plugin maps no key. Declare your own in `setup()`, per scope, as
+`lhs = action`: >lua
+    require("mdresearch").setup({
+      workspaces = { ... },
+      keymaps = {
+        global = {
+          ["<leader>ms"] = "open",
+          ["<leader>mr"] = "resume",
+          ["<leader>ml"] = "last",
+          ["<leader>mw"] = "workspace",
+        },
+        mask = {
+          ["<CR>"]  = "mask.submit",
+          ["<C-a>"] = "mask.toggle_mode",
+          ["<C-u>"] = "mask.clear_field",
+          ["<Tab>"] = "mask.next_field",
+          ["<S-Tab>"] = "mask.prev_field",
+          ["q"]     = "mask.cancel",
+          ["<Esc>"] = "mask.cancel",
+        },
+        results = {
+          ["<CR>"]  = "results.open",
+          ["<C-x>"] = "results.split",
+          ["<C-v>"] = "results.vsplit",
+          ["<C-t>"] = "results.tab",
+          ["p"]     = "results.preview",
+          ["r"]     = "results.refine",
+          ["q"]     = "results.close",
+        },
+      },
+    })
+<
+`global` maps are set once by `setup()`. `mask` and `results` maps are
+buffer-local and set when such a buffer opens, so they never leak into your
+notes.
+
+The right-hand side is an action name (|mdresearch-actions|), a Lua function,
+or a table `{ action_or_function, mode = ..., desc = ... }` when you want
+other modes than the action's own — mask actions default to `{ "n", "i" }`,
+the rest to `"n"`. An unknown action, or one from another scope, is a setup
+error naming the offending key.
+
+Nothing stops you from mapping the Lua API directly instead: >lua
+    vim.keymap.set("n", "<leader>ms", function()
+      require("mdresearch").open({ workspace = "notes" })
+    end, { desc = "search notes" })
+<
+Adding maps after `setup()`: >lua
+    require("mdresearch").keymaps({
+      results = { ["gO"] = "results.tab" },
+    })
+<
+==============================================================================
+11. EVENTS                                                *mdresearch-events*
+
+Two |User| events, both carrying `data`: >
+    MdResearchWorkspaceChanged   { workspace = name, root = path }
+    MdResearchResults            { count = n, workspace = name }
+<
+For example: >lua
+    vim.api.nvim_create_autocmd("User", {
+      pattern = "MdResearchResults",
+      callback = function(ev) print(ev.data.count .. " hits") end,
+    })
+<
+`on_open = function(path, row)` in `setup()` runs before a row's file is
+loaded.
+
+==============================================================================
+12. BACKENDS                                            *mdresearch-backends*
+
+`backend = "auto"` (the default) uses `mdrq` when a compatible binary is on
+$PATH, at `mdrq.cmd`, or in `rust/mdrq/target/release/` inside the plugin;
+otherwise it uses the Lua backend, which shells out to ripgrep to narrow the
+candidates and falls back to a directory walk when ripgrep is missing.
+
+Build the Rust backend with `scripts/build-mdrq.sh`. Both backends return the
+same rows for the same query; `tests/mdresearch/parity_spec.lua` enforces it.
+Force one with `backend = "lua"` or `backend = "mdrq"`.
+
+vim:tw=78:ts=8:ft=help:norl:
