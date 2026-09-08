@@ -29,8 +29,9 @@ The plugin maps no key. Everything it does is an Ex command
 (|mdresearch-commands|), a Lua function (|mdresearch-api|), or a named action
 you can map yourself (|mdresearch-actions|, |mdresearch-mappings|).
 
-Requirements: Neovim 0.10+. |ripgrep| is optional but recommended; the Rust
-backend (|mdresearch-backends|) is optional too.
+Requirements: Neovim 0.12+, the version that ships |vim.pack|, which is the
+plugin manager this expects you to install it with. |ripgrep| is optional but
+recommended; the Rust backend (|mdresearch-backends|) is optional too.
 
 ==============================================================================
 2. SETUP                                                   *mdresearch-setup*

@@ -18,7 +18,8 @@ Linux server setup │ linux, server, tutorial │ 2025-01-15 │ linux-server.m
 
 ## Requirements
 
-Neovim 0.10 or newer. Nothing else is mandatory.
+Neovim 0.12 or newer, because `vim.pack` is the plugin manager this expects
+you to install it with. Nothing else is mandatory.
 
 Two optional pieces make it faster, and `:checkhealth mdresearch` tells you
 which ones it found:
@@ -37,9 +38,10 @@ you have the `github.com-rako` host alias in `~/.ssh/config`, use
 `git@github.com-rako:rako233/mdresearch.git` as the source. Plain
 `https://github.com/rako233/mdresearch` works once the repo is public.
 
-### vim.pack (built into Neovim 0.12)
+### vim.pack
 
-No third-party manager needed. In `init.lua`:
+Neovim's own plugin manager since 0.12, and the one these instructions
+assume. No third-party manager needed. In `init.lua`:
 
 ```lua
 vim.pack.add({
@@ -88,6 +90,8 @@ startup step. That is fine here. `setup()` installs the commands itself, and
 `plugin/mdresearch.lua` installs the same set idempotently a moment later.
 
 ### lazy.nvim
+
+Still supported, if that is what the rest of your config uses.
 
 ```lua
 {
@@ -610,7 +614,7 @@ plugin/           the commands        doc/IMPLEMENTATION.md  build order
 ```
 
 ```sh
-make test     # 243 Lua specs and 26 Rust tests
+make test     # 245 Lua specs and 26 Rust tests
 make build    # the optional Rust backend
 make fmt      # cargo fmt, plus stylua when installed
 ```

@@ -367,3 +367,16 @@ describe("status", function()
     expect(st.results).eq(2)
   end)
 end)
+
+describe("health", function()
+  local health = require("mdresearch.health")
+
+  it("states the Neovim version it is documented against", function()
+    expect(health.MIN_VERSION).eq({ 0, 12, 0 })
+  end)
+
+  it("runs without raising on the current Neovim", function()
+    setup()
+    expect(pcall(health.check)).truthy()
+  end)
+end)

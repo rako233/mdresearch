@@ -13,8 +13,26 @@ local function start(msg)
   (vim.health.start or vim.health.report_start)(msg)
 end
 
+--- The minimum Neovim this plugin is documented against. It is `vim.pack`
+--- that sets it, not an API the plugin itself calls, so an older Neovim is
+--- reported rather than refused: it will work, it is just not the version
+--- the install instructions assume.
+M.MIN_VERSION = { 0, 12, 0 }
+
 function M.check()
   start("mdresearch")
+
+  local v = vim.version()
+  local have = string.format("%d.%d.%d", v.major, v.minor, v.patch)
+  local want = table.concat(M.MIN_VERSION, ".")
+  if vim.version.ge(v, M.MIN_VERSION) then
+    ok("Neovim " .. have)
+  else
+    warn(
+      string.format("Neovim %s, below the supported %s", have, want),
+      { "the plugin should still work; vim.pack, the documented way to install it, needs " .. want }
+    )
+  end
 
   local cfg_ok, cfg = pcall(function()
     return require("mdresearch.config").get()
