@@ -2,3 +2,4 @@ rust/mdrq/target/
 *.swp
 .luarc.json
 doc/tags
+CLAUDE.md
