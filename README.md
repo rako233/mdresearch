@@ -33,10 +33,8 @@ which ones it found:
 
 ## Install
 
-The repository is private, so a plugin manager has to clone it over SSH. If
-you have the `github.com-rako` host alias in `~/.ssh/config`, use
-`git@github.com-rako:rako233/mdresearch.git` as the source. Plain
-`https://github.com/rako233/mdresearch` works once the repo is public.
+The repository is public, so any plugin manager can clone it over HTTPS from
+`https://github.com/rako233/mdresearch`.
 
 ### vim.pack
 
@@ -45,7 +43,7 @@ assume. No third-party manager needed. In `init.lua`:
 
 ```lua
 vim.pack.add({
-  { src = "git@github.com-rako:rako233/mdresearch.git" },
+  { src = "https://github.com/rako233/mdresearch.git" },
 })
 
 require("mdresearch").setup({
@@ -74,7 +72,7 @@ a semver range:
 ```lua
 vim.pack.add({
   {
-    src     = "git@github.com-rako:rako233/mdresearch.git",
+    src     = "https://github.com/rako233/mdresearch.git",
     version = vim.version.range("^0.2"),
   },
 })
@@ -104,13 +102,14 @@ Still supported, if that is what the rest of your config uses.
 }
 ```
 
-`opts` is passed straight to `setup()`. For the private repo add
-`url = "git@github.com-rako:rako233/mdresearch.git"` to the spec.
+`opts` is passed straight to `setup()`. The short `"rako233/mdresearch"` form
+resolves to the GitHub HTTPS URL; add
+`url = "https://github.com/rako233/mdresearch.git"` if you want it spelled out.
 
 ### Manual, no manager
 
 ```sh
-git clone git@github.com-rako:rako233/mdresearch.git \
+git clone https://github.com/rako233/mdresearch.git \
   ~/.local/share/nvim/site/pack/plugins/start/mdresearch
 ```
 
